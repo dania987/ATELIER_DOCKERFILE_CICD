@@ -22,9 +22,22 @@ jobs:
   Tests:
     runs-on: ubuntu-latest
     steps:
-      - name: A compléter
+      - name: Recuperer le code du depot
+        uses: actions/checkout@v4
+
+      - name: Installer Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Installer les dependances
         run: |
-          echo "Écrire ici les étapes de test de l'application"
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Lancer les tests
+        run: pytest -v tests/
 
   # ---------------------------------------------------------------
   # JOB 2 - Livraison continue : construire l'image Docker
@@ -44,9 +57,20 @@ jobs:
     runs-on: ubuntu-latest
     needs: Tests
     steps:
-      - name: A compléter
-        run: |
-          echo "Écrire ici la construction de l'image Docker"
+      - name: Recuperer le code du depot
+        uses: actions/checkout@v4
+
+      - name: Construire l'image Docker
+        run: docker build -t ${{ env.IMAGE_NAME }}:${{ github.sha }} .
+
+      - name: Exporter l'image dans un fichier
+        run: docker save ${{ env.IMAGE_NAME }}:${{ github.sha }} -o image.tar
+
+      - name: Transmettre le fichier au job 3
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-docker
+          path: image.tar
 
   # ---------------------------------------------------------------
   # JOB 3 - Déploiement continu : simulation de mise en production
@@ -66,6 +90,22 @@ jobs:
     needs: Docker
     environment: production
     steps:
-      - name: A compléter
+      - name: Recuperer l'artefact du job 2
+        uses: actions/download-artifact@v4
+        with:
+          name: image-docker
+
+      - name: Charger l'image dans Docker
+        run: docker load -i image.tar
+
+      - name: Demarrer le conteneur
+        run: docker run -d -p 4000:4000 ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      - name: Attendre le demarrage et verifier que l'application repond
         run: |
-          echo "Écrire ici la simulation de mise en production"
+          sleep 3
+          curl http://localhost:4000/
+
+      - name: Afficher un message de succes dans le resume du pipeline
+        run: |
+          echo "Mise en production simulee avec succes !" >> $GITHUB_STEP_SUMMARY
